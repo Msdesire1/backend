@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import { sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
+import { sendLoginAlertEmail, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
+import { resetRateLimit } from "../middleware/rateLimit.middleware.js";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
@@ -100,8 +101,18 @@ export const login = async (req, res, next) => {
             return res.status(403).json({
                 success: false,
                 message: "Please verify your email address before logging in. Check your inbox for the verification code.",
+                // Both are sent: `requiresEmailVerification` is what the existing
+                // client checks, `code` is the stable identifier every other error
+                // in this API is branched on.
+                code: "EMAIL_NOT_VERIFIED",
                 requiresEmailVerification: true
             });
+        }
+
+        try {
+            await sendLoginAlertEmail(user.email, user.firstName || "there");
+        } catch (mailError) {
+            console.error(`Failed to send login alert email to ${user.email}: ${mailError.message}`);
         }
 
         res.status(200).json({
@@ -111,6 +122,10 @@ export const login = async (req, res, next) => {
             requiresRegistrationCompletion: !user.registrationComplete,
             user: user.toPublicJSON(),
         });
+        // Clear the throttle counter now that the password is known to be right.
+        // Without this, someone who fumbles it a few times and then gets in is
+        // still carrying those failures and can be locked out of their next login.
+        resetRateLimit("login", req);
     } catch (error) { next(error); }
 };
 
@@ -118,7 +133,7 @@ export const forgotPassword = async (req, res, next) => {
     try {
         const email = clean((req.body || {}).email).toLowerCase();
         // Keep this response identical whether or not the address is registered.
-        const response = { success: true, message: "an email, a password reset link has been sent." };
+        const response = { success: true, message: "an email has been sent with a password reset link." };
         if (!EMAIL_PATTERN.test(email)) return res.status(200).json(response);
         const user = await User.findOne({ email }).select("+passwordResetToken +passwordResetExpires");
         if (!user) return res.status(200).json(response);
@@ -129,7 +144,12 @@ export const forgotPassword = async (req, res, next) => {
         await user.save({ validateBeforeSave: false });
 
         const clientUrl = (process.env.CLIENT_URL || "http://localhost:3000").replace(/\/$/, "");
-        const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
+        // Must match the real page: the reset screen lives at
+        // app/onboarding/reset-password. The previous /reset-password/:token link
+        // pointed at a route that does not exist, so every email 404'd. The token
+        // travels as a query parameter because that page is a single static route
+        // rather than a dynamic segment.
+        const resetUrl = `${clientUrl}/onboarding/reset-password?token=${rawToken}`;
         try {
             await sendPasswordResetEmail(email, resetUrl);
         } catch (mailError) {

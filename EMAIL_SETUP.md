@@ -179,7 +179,7 @@ db.users.updateMany({}, { $set: { emailVerified: true } })
 
 1. **After registration**, check `response.requiresEmailVerification`
    - If `true`, show a "Verify your email" screen with a 6-digit input
-   
+
 2. **On that screen**, call `POST /api/auth/verify-email` with the user's token and their OTP
 
 3. **If login returns 403** with `requiresEmailVerification: true`:
@@ -201,10 +201,10 @@ db.users.updateMany({}, { $set: { emailVerified: true } })
 
 ## Summary
 
-✅ **OTP verification at registration** — complete  
-✅ **Login blocked until verified** — complete  
-✅ **Resend OTP endpoint** — complete  
-✅ **Password reset emails** — already working  
+✅ **OTP verification at registration** — complete
+✅ **Login blocked until verified** — complete
+✅ **Resend OTP endpoint** — complete
+✅ **Password reset emails** — already working
 ⚠️ **SMTP configuration** — needs your Brevo credentials (see Step 1-4 above)
 
 Once you add `SMTP_USER` and `SMTP_PASS` to `.env` and restart, emails will send to real inboxes instead of the console.

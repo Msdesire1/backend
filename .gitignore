@@ -73,6 +73,16 @@ web_modules/
 .env
 .env.test
 .env.production
+.env.local
+.env.*.local
+# Anything that looks like a copy of .env — these hold real secrets, and only
+# .env.example is safe to commit. The catch-all comes first and .env.example is
+# re-included after it, so a copy nobody thought to name here is still ignored.
+.env.*
+.env.backup*
+.env.bak
+.env.*.backup
+!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
