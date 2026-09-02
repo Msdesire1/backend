@@ -32,9 +32,16 @@ export const register = async (req, res, next) => {
         // if (Object.keys(errors).length) return res.status(422).json({ success: false, message: "Please correct the highlighted fields.", errors });
         // const email = clean(body.email).toLowerCase();
 
-        const { firstName, lastName, email, phoneNumber, password } = body;
+        const firstName = clean(body.firstName);
+        const lastName = clean(body.lastName);
+        const email = clean(body.email).toLowerCase();
+        const phoneNumber = clean(body.phoneNumber);
+        const { password } = body;
         if (!firstName || !lastName || !email || !phoneNumber || !password) {
             return res.status(422).json({ success: false, message: "All fields are required." });
+        }
+        if (!EMAIL_PATTERN.test(email)) {
+            return res.status(422).json({ success: false, message: "Enter a valid email address." });
         }
 
         const existingUser = await User.findOne({ email });
@@ -45,10 +52,10 @@ export const register = async (req, res, next) => {
         const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
 
         const user = await User.create({
-            firstName: clean(body.firstName),
-            lastName: clean(body.lastName),
+            firstName,
+            lastName,
             email,
-            phoneNumber: clean(body.phoneNumber),
+            phoneNumber,
             password: body.password,
             acceptedTermsAt: new Date(),
             emailVerified: false,
@@ -56,11 +63,18 @@ export const register = async (req, res, next) => {
             emailOtpExpires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
         });
 
-        // Send OTP email (don't block registration if email fails)
+        // The account stays available for a resend, but never claim that a code
+        // was sent when the provider rejected it.
         try {
             await sendVerificationOtpEmail(email, otp);
         } catch (mailError) {
             console.error(`Failed to send verification email to ${email}: ${mailError.message}`);
+            return res.status(503).json({
+                success: false,
+                code: "EMAIL_DELIVERY_FAILED",
+                message: "Your account was created, but we could not send the verification code. Please try again shortly.",
+                requiresEmailVerification: true,
+            });
         }
 
         res.status(201).json({
@@ -247,11 +261,17 @@ export const resendVerificationOtp = async (req, res, next) => {
         user.emailOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
         await user.save();
 
-        // Send OTP email
+        // Do not report success when the provider rejected the resend.
         try {
             await sendVerificationOtpEmail(user.email, otp);
         } catch (mailError) {
             console.error(`Failed to resend verification email to ${user.email}: ${mailError.message}`);
+            return res.status(503).json({
+                success: false,
+                code: "EMAIL_DELIVERY_FAILED",
+                message: "We could not send the verification code. Please try again shortly.",
+                requiresEmailVerification: true,
+            });
         }
 
         res.status(200).json({
