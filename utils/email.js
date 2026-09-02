@@ -2,7 +2,8 @@ import nodemailer from "nodemailer";
 
 let transporter;
 
-const isConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const isSmtpConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const isBrevoApiConfigured = () => Boolean(process.env.BREVO_API_KEY);
 
 const getTransporter = () => {
   if (!transporter) {
@@ -16,10 +17,49 @@ const getTransporter = () => {
   return transporter;
 };
 
+const parseSender = (value) => {
+  const fallback = "Word of Faith Bible Institute <no-reply@example.com>";
+  const sender = String(value || fallback).trim();
+  const match = sender.match(/^\s*(.*?)\s*<\s*([^<>\s]+)\s*>\s*$/);
+  if (match) return { name: match[1].replace(/^"|"$/g, "").trim() || "Word of Faith Bible Institute", email: match[2] };
+  return { name: "Word of Faith Bible Institute", email: sender };
+};
+
+const sendWithBrevoApi = async ({ to, subject, html }) => {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({
+      sender: parseSender(process.env.EMAIL_FROM),
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = payload.message || payload.code || `HTTP ${response.status}`;
+    throw new Error(`Brevo API rejected the email: ${detail}`);
+  }
+  return payload;
+};
+
 export const sendEmail = async ({ to, subject, text, html }) => {
-  if (!isConfigured()) {
+  if (isBrevoApiConfigured()) {
+    const result = await sendWithBrevoApi({ to, subject, html });
+    console.info(`[email] sent through Brevo API to ${to} | subject: ${subject} | messageId: ${result.messageId || "unavailable"}`);
+    return;
+  }
+
+  if (!isSmtpConfigured()) {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.");
+      throw new Error("Email is not configured. Set BREVO_API_KEY, or configure SMTP_HOST, SMTP_USER, and SMTP_PASS.");
     }
     console.info(`[email:dev] SMTP not configured — email was not sent to ${to}\nSubject: ${subject}\n${text || html}`);
     return;

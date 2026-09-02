@@ -106,7 +106,21 @@ Once verified, login works normally.
 
 ## How to Fix "SMTP not configured"
 
-Your app prints `[email:dev] SMTP not configured` because **`SMTP_PASS` is empty** in `.env`. Here's how to fix it with Brevo.
+For local SMTP delivery, use the settings below. For a Render Free deployment, use the **Brevo HTTPS API** configuration because Render blocks SMTP ports 25, 465 and 587.
+
+### Render Free / Brevo HTTPS API (recommended)
+
+1. In Brevo, go to **SMTP & API** → **API Keys** and create an API key.
+2. In the Render dashboard, add these environment variables and redeploy:
+
+```env
+BREVO_API_KEY=your-brevo-api-key
+EMAIL_FROM="Word of Faith Bible Institute <verified@yourdomain.com>"
+```
+
+The sender address must be verified in Brevo. Do **not** set `SMTP_PORT=443`: port 443 is used automatically by the HTTPS API, not by SMTP.
+
+### SMTP setup (local development or paid Render instances)
 
 ### Step 1: Get Brevo SMTP Credentials
 
