@@ -25,25 +25,18 @@ const signToken = (userId) => {
     return jwt.sign({ sub: userId.toString() }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
 };
 
-const registrationErrors = (body) => {
-    const errors = {};
-    if (!NAME_PATTERN.test(clean(body.firstName))) errors.firstName = "Enter a valid first name.";
-    if (!NAME_PATTERN.test(clean(body.lastName))) errors.lastName = "Enter a valid last name.";
-    if (!EMAIL_PATTERN.test(clean(body.email))) errors.email = "Enter a valid email address.";
-    if (!PHONE_PATTERN.test(clean(body.phoneNumber))) errors.phoneNumber = "Use international format, e.g. +2348000000000.";
-    const passwordMessage = passwordError(body.password);
-    if (passwordMessage) errors.password = passwordMessage;
-    if (body.password !== body.confirmPassword) errors.confirmPassword = "Passwords do not match.";
-    return errors;
-};
-
 export const register = async (req, res, next) => {
     try {
         const body = req.body || {};
-        const errors = registrationErrors(body);
-        if (Object.keys(errors).length) return res.status(422).json({ success: false, message: "Please correct the highlighted fields.", errors });
+        // const errors = registrationErrors(body);
+        // if (Object.keys(errors).length) return res.status(422).json({ success: false, message: "Please correct the highlighted fields.", errors });
+        // const email = clean(body.email).toLowerCase();
 
-        const email = clean(body.email).toLowerCase();
+        const { firstName, lastName, email, phoneNumber, password } = body;
+        if (!firstName || !lastName || !email || !phoneNumber || !password) {
+            return res.status(422).json({ success: false, message: "All fields are required." });
+        }
+
         const existingUser = await User.findOne({ email });
         if (existingUser) return res.status(409).json({ success: false, message: "An account with this email already exists." });
 
