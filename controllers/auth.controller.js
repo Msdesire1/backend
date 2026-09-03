@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import { sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
+import { logVerificationOtp, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
+import { resetRateLimit } from "../middleware/rateLimit.middleware.js";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
@@ -62,19 +63,25 @@ export const register = async (req, res, next) => {
             emailOtpExpires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
         });
 
-        // Send OTP email (don't block registration if email fails)
+        logVerificationOtp(email, otp, "registration");
+
+        let emailDeliveryFailed = false;
         try {
             await sendVerificationOtpEmail(email, otp);
         } catch (mailError) {
-            console.error(`Failed to send verification email to ${email}: ${mailError.message}`);
+            emailDeliveryFailed = true;
+            console.error(`Failed to send verification email to ${email}: ${mailError.message} | SMTP code: ${mailError.code || "<unknown>"} | SMTP response: ${mailError.response || "<none>"} | public IP: ${mailError.publicIp || "<unknown>"}`);
         }
 
         res.status(201).json({
             success: true,
-            message: "Account created. Check your email for a verification code to activate your account.",
+            message: emailDeliveryFailed
+                ? "Account created, but the verification email could not be sent. Use resend verification after fixing email delivery."
+                : "Account created. Check your email for a verification code to activate your account.",
             token: signToken(user._id),
             user: user.toPublicJSON(),
             requiresEmailVerification: true,
+            emailDeliveryFailed,
         });
     } catch (error) {
         if (error?.code === 11000) return res.status(409).json({ success: false, message: "An account with this email already exists." });
@@ -100,6 +107,10 @@ export const login = async (req, res, next) => {
             return res.status(403).json({
                 success: false,
                 message: "Please verify your email address before logging in. Check your inbox for the verification code.",
+                // Both are sent: `requiresEmailVerification` is what the existing
+                // client checks, `code` is the stable identifier every other error
+                // in this API is branched on.
+                code: "EMAIL_NOT_VERIFIED",
                 requiresEmailVerification: true
             });
         }
@@ -111,6 +122,10 @@ export const login = async (req, res, next) => {
             requiresRegistrationCompletion: !user.registrationComplete,
             user: user.toPublicJSON(),
         });
+        // Clear the throttle counter now that the password is known to be right.
+        // Without this, someone who fumbles it a few times and then gets in is
+        // still carrying those failures and can be locked out of their next login.
+        resetRateLimit("login", req);
     } catch (error) { next(error); }
 };
 
@@ -118,7 +133,7 @@ export const forgotPassword = async (req, res, next) => {
     try {
         const email = clean((req.body || {}).email).toLowerCase();
         // Keep this response identical whether or not the address is registered.
-        const response = { success: true, message: "an email, a password reset link has been sent." };
+        const response = { success: true, message: "an email has been sent with a password reset link." };
         if (!EMAIL_PATTERN.test(email)) return res.status(200).json(response);
         const user = await User.findOne({ email }).select("+passwordResetToken +passwordResetExpires");
         if (!user) return res.status(200).json(response);
@@ -129,13 +144,18 @@ export const forgotPassword = async (req, res, next) => {
         await user.save({ validateBeforeSave: false });
 
         const clientUrl = (process.env.CLIENT_URL || "http://localhost:3000").replace(/\/$/, "");
-        const resetUrl = `${clientUrl}/reset-password/${rawToken}`;
+        // Must match the real page: the reset screen lives at
+        // app/onboarding/reset-password. The previous /reset-password/:token link
+        // pointed at a route that does not exist, so every email 404'd. The token
+        // travels as a query parameter because that page is a single static route
+        // rather than a dynamic segment.
+        const resetUrl = `${clientUrl}/onboarding/reset-password?token=${rawToken}`;
         try {
             await sendPasswordResetEmail(email, resetUrl);
         } catch (mailError) {
             // Don't leak whether the address exists, and don't leave a usable token behind
             // if the email never went out. Clear it and log for the operator.
-            console.error(`Failed to send password reset email to ${email}: ${mailError.message}`);
+            console.error(`Failed to send password reset email to ${email}: ${mailError.message} | public IP: ${mailError.publicIp || "<unknown>"}`);
             user.passwordResetToken = undefined;
             user.passwordResetExpires = undefined;
             await user.save({ validateBeforeSave: false });
@@ -234,11 +254,16 @@ export const resendVerificationOtp = async (req, res, next) => {
         user.emailOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
         await user.save();
 
-        // Send OTP email
+        logVerificationOtp(user.email, otp, "resend");
+
         try {
             await sendVerificationOtpEmail(user.email, otp);
         } catch (mailError) {
-            console.error(`Failed to resend verification email to ${user.email}: ${mailError.message}`);
+            console.error(`Failed to resend verification email to ${user.email}: ${mailError.message} | SMTP code: ${mailError.code || "<unknown>"} | SMTP response: ${mailError.response || "<none>"} | public IP: ${mailError.publicIp || "<unknown>"}`);
+            return res.status(503).json({
+                success: false,
+                message: "Unable to send the verification email. Please try again after fixing email delivery.",
+            });
         }
 
         res.status(200).json({

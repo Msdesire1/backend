@@ -44,6 +44,14 @@ const userSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     emailOtpHash: { type: String, select: false },
     emailOtpExpires: { type: Date, select: false },
+    // Matriculation number, e.g. "WOF/26/01482". Issued only when an admin
+    // approves the application, so it is absent (not null) until then — hence
+    // `sparse`, which lets many documents omit it without tripping the unique index.
+    studentId: { type: String, trim: true, unique: true, sparse: true },
+    intake: {
+      code: { type: String, trim: true },
+      label: { type: String, trim: true }, // "Spring 2026"
+    },
     profile: {
       dateOfBirth: Date,
       gender: { type: String, enum: ["female", "male", "prefer_not_to_say"] },
@@ -77,10 +85,13 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     id: this._id,
     firstName: this.firstName,
     lastName: this.lastName,
+    fullName: [this.firstName, this.lastName].filter(Boolean).join(" "),
     email: this.email,
     phoneNumber: this.phoneNumber,
     registrationComplete: this.registrationComplete,
     emailVerified: this.emailVerified,
+    studentId: this.studentId || null,
+    intake: this.intake?.label ? this.intake : null,
     profile: this.profile,
     createdAt: this.createdAt,
   };
