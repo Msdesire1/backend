@@ -1,11 +1,7 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-<<<<<<< HEAD
 import { logVerificationOtp, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
-=======
-import { sendLoginAlertEmail, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
->>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 import { resetRateLimit } from "../middleware/rateLimit.middleware.js";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
@@ -67,7 +63,6 @@ export const register = async (req, res, next) => {
             emailOtpExpires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
         });
 
-<<<<<<< HEAD
         logVerificationOtp(email, otp, "registration");
 
         let emailDeliveryFailed = false;
@@ -76,20 +71,6 @@ export const register = async (req, res, next) => {
         } catch (mailError) {
             emailDeliveryFailed = true;
             console.error(`Failed to send verification email to ${email}: ${mailError.message} | SMTP code: ${mailError.code || "<unknown>"} | SMTP response: ${mailError.response || "<none>"} | public IP: ${mailError.publicIp || "<unknown>"}`);
-=======
-        // The account stays available for a resend, but never claim that a code
-        // was sent when the provider rejected it.
-        try {
-            await sendVerificationOtpEmail(email, otp);
-        } catch (mailError) {
-            console.error(`Failed to send verification email to ${email}: ${mailError.message}`);
-            return res.status(503).json({
-                success: false,
-                code: "EMAIL_DELIVERY_FAILED",
-                message: "Your account was created, but we could not send the verification code. Please try again shortly.",
-                requiresEmailVerification: true,
-            });
->>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
         }
 
         res.status(201).json({
@@ -279,7 +260,6 @@ export const resendVerificationOtp = async (req, res, next) => {
         user.emailOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
         await user.save();
 
-<<<<<<< HEAD
         logVerificationOtp(user.email, otp, "resend");
 
         try {
@@ -289,18 +269,6 @@ export const resendVerificationOtp = async (req, res, next) => {
             return res.status(503).json({
                 success: false,
                 message: "Unable to send the verification email. Please try again after fixing email delivery.",
-=======
-        // Do not report success when the provider rejected the resend.
-        try {
-            await sendVerificationOtpEmail(user.email, otp);
-        } catch (mailError) {
-            console.error(`Failed to resend verification email to ${user.email}: ${mailError.message}`);
-            return res.status(503).json({
-                success: false,
-                code: "EMAIL_DELIVERY_FAILED",
-                message: "We could not send the verification code. Please try again shortly.",
-                requiresEmailVerification: true,
->>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
             });
         }
 
