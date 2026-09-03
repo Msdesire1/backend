@@ -6,7 +6,7 @@ import { resetRateLimit } from "../middleware/rateLimit.middleware.js";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
-const NAME_PATTERN = /^[a-zA-Z][a-zA-Z '-]{1,49}$/;
+// const NAME_PATTERN = /^[a-zA-Z][a-zA-Z '-]{1,49}$/;
 
 const clean = (value) => (typeof value === "string" ? value.trim() : "");
 
