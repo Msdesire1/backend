@@ -2,7 +2,7 @@ import nodemailer from "nodemailer";
 
 let transporter;
 
-const DEFAULT_LOGO_URL = "https://www.lfcnewjerusalem.com/logomark.png";
+const DEFAULT_LOGO_URL = "https://wofbi.lfcww.org/assets/image/wofbilogo.png";
 const isConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 const isBrevoApiConfigured = () => Boolean(process.env.BREVO_API_KEY);
 const websiteUrl = () => (process.env.CLIENT_URL || "https://www.lfcnewjerusalem.com").replace(/\/$/, "");
