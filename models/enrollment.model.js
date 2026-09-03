@@ -45,14 +45,6 @@ const enrollmentSchema = new mongoose.Schema(
 
 // A student can only hold one place per programme.
 enrollmentSchema.index({ user: 1, course: 1 }, { unique: true });
-<<<<<<< HEAD
-=======
-// Keep the one-active-course rule true even when two enrollment requests race.
-enrollmentSchema.index(
-  { user: 1 },
-  { unique: true, partialFilterExpression: { status: ENROLLMENT_STATUS.ACTIVE } },
-);
->>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 enrollmentSchema.index({ course: 1, status: 1 });
 
 enrollmentSchema.methods.hasCompleted = function hasCompleted(lessonId) {
