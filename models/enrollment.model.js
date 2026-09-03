@@ -12,6 +12,7 @@ import { CURRENT_INTAKE, ENROLLMENT_STATUS, ENROLLMENT_STATUSES } from "../confi
  * programme's current published lesson count whenever it is read, so adding a
  * lesson recalculates everyone's progress instead of leaving stale numbers behind.
  */
+
 const completedLessonSchema = new mongoose.Schema(
   {
     lesson: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson", required: true },

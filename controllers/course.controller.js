@@ -197,7 +197,6 @@ export const enrollInCourse = asyncHandler(async (req, res) => {
     );
   }
 
-<<<<<<< HEAD
   const enrollment = await Enrollment.create({
     user: req.user._id,
     course: course._id,
@@ -205,27 +204,6 @@ export const enrollInCourse = asyncHandler(async (req, res) => {
       ? { code: req.user.intake.code, label: req.user.intake.label }
       : { code: CURRENT_INTAKE.code, label: CURRENT_INTAKE.label },
   });
-=======
-  let enrollment;
-  try {
-    enrollment = await Enrollment.create({
-      user: req.user._id,
-      course: course._id,
-      intake: req.user.intake?.code
-        ? { code: req.user.intake.code, label: req.user.intake.label }
-        : { code: CURRENT_INTAKE.code, label: CURRENT_INTAKE.label },
-    });
-  } catch (error) {
-    // The partial unique index is the final guard when two tabs submit at once.
-    if (error?.code === 11000) {
-      throw ApiError.forbidden(
-        "You are already studying a course. Finish or withdraw from it before starting another.",
-        { code: "ALREADY_STUDYING" },
-      );
-    }
-    throw error;
-  }
->>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
   res.status(201).json({
     success: true,
