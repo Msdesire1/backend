@@ -116,6 +116,8 @@ EMAIL_FROM="Word of Faith Bible Institute <verified@yourdomain.com>"
 
 The sender address must be verified in Brevo. Do **not** set `SMTP_PORT=443`: port 443 is used automatically by the HTTPS API, not by SMTP.
 
+The application automatically uses the Brevo API whenever `BREVO_API_KEY` is set, even if older `SMTP_*` variables are still present.
+
 ### SMTP setup (local development or paid Render instances)
 
 ### Step 1: Get Brevo SMTP Credentials

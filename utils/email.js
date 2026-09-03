@@ -4,6 +4,7 @@ let transporter;
 
 const DEFAULT_LOGO_URL = "https://www.lfcnewjerusalem.com/logomark.png";
 const isConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const isBrevoApiConfigured = () => Boolean(process.env.BREVO_API_KEY);
 const websiteUrl = () => (process.env.CLIENT_URL || "https://www.lfcnewjerusalem.com").replace(/\/$/, "");
 const logoUrl = () => process.env.EMAIL_LOGO_URL || DEFAULT_LOGO_URL;
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -42,14 +43,51 @@ const getTransporter = () => {
   return transporter;
 };
 
+const parseSender = (value) => {
+  const sender = String(value || "no-reply@example.com").trim();
+  const match = sender.match(/^\s*(?:([^<>]+?)\s*)?<([^<>\s]+)>\s*$/);
+  return match
+    ? { email: match[2], ...(match[1] ? { name: match[1].trim().replace(/^['\"]|['\"]$/g, "") } : {}) }
+    : { email: sender };
+};
+
+const sendWithBrevoApi = async ({ to, subject, text, html }) => {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: parseSender(process.env.EMAIL_FROM),
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Brevo API request failed (${response.status}): ${body.message || body.code || "unknown error"}`);
+  }
+  console.info(`[email] accepted by Brevo API: to=${to} | messageId=${body.messageId || "<unknown>"}`);
+  return body;
+};
+
 export const sendEmail = async ({ to, subject, text, html }) => {
-  if (!isConfigured()) {
-    if (process.env.NODE_ENV === "production") throw new Error("SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.");
+  if (!isBrevoApiConfigured() && !isConfigured()) {
+    if (process.env.NODE_ENV === "production") throw new Error("Email is not configured. Set BREVO_API_KEY, or SMTP_HOST, SMTP_USER, and SMTP_PASS.");
     console.info(`[email:dev] SMTP not configured — would send to ${to}\nSubject: ${subject}\n${text || html}`);
     return;
   }
   const publicIp = await getPublicIp();
   try {
+    // Render Free blocks SMTP ports. Prefer Brevo's HTTPS API whenever its key
+    // is present; HTTPS (443) works on all Render plans.
+    if (isBrevoApiConfigured()) return await sendWithBrevoApi({ to, subject, text, html });
     const info = await getTransporter().sendMail({ from: process.env.EMAIL_FROM || "no-reply@example.com", to, subject, text, html });
     console.info(`[email] accepted by SMTP: to=${to} | messageId=${info.messageId || "<unknown>"} | response=${info.response || "<none>"}`);
     return info;
