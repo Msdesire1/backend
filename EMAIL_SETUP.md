@@ -102,7 +102,21 @@ Once verified, login works normally.
 
 ## How to Fix "SMTP not configured"
 
-Your app prints `[email:dev] SMTP not configured` because **`SMTP_PASS` is empty** in `.env`. Here's how to fix it with Brevo.
+For local SMTP delivery, use the settings below. For a Render Free deployment, use the **Brevo HTTPS API** configuration because Render blocks SMTP ports 25, 465 and 587.
+
+### Render Free / Brevo HTTPS API (recommended)
+
+1. In Brevo, go to **SMTP & API** → **API Keys** and create an API key.
+2. In the Render dashboard, add these environment variables and redeploy:
+
+```env
+BREVO_API_KEY=your-brevo-api-key
+EMAIL_FROM="Word of Faith Bible Institute <verified@yourdomain.com>"
+```
+
+The sender address must be verified in Brevo. Do **not** set `SMTP_PORT=443`: port 443 is used automatically by the HTTPS API, not by SMTP.
+
+### SMTP setup (local development or paid Render instances)
 
 ### Step 1: Get Brevo SMTP Credentials
 
@@ -176,8 +190,13 @@ db.users.updateMany({}, { $set: { emailVerified: true } })
 
 1. **After registration**, check `response.requiresEmailVerification`
    - If `true`, show a "Verify your email" screen with a 6-digit input
+<<<<<<< HEAD
    
 2. **On that screen**, call `POST /api/auth/verify-email` with the user's email and OTP
+=======
+
+2. **On that screen**, call `POST /api/auth/verify-email` with the user's token and their OTP
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
 3. **If login returns 403** with `requiresEmailVerification: true`:
    - Redirect to the verify screen
@@ -198,10 +217,10 @@ db.users.updateMany({}, { $set: { emailVerified: true } })
 
 ## Summary
 
-✅ **OTP verification at registration** — complete  
-✅ **Login blocked until verified** — complete  
-✅ **Resend OTP endpoint** — complete  
-✅ **Password reset emails** — already working  
+✅ **OTP verification at registration** — complete
+✅ **Login blocked until verified** — complete
+✅ **Resend OTP endpoint** — complete
+✅ **Password reset emails** — already working
 ⚠️ **SMTP configuration** — needs your Brevo credentials (see Step 1-4 above)
 
 Once you add `SMTP_USER` and `SMTP_PASS` to `.env` and restart, emails will send to real inboxes instead of the console.

@@ -6,16 +6,28 @@
  * Run with: node tests/stats.test.mjs
  */
 import assert from "node:assert/strict";
+<<<<<<< HEAD
 import { fileURLToPath, pathToFileURL } from "node:url";
+=======
+import { fileURLToPath } from "node:url";
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const { deltaLabel, formatCount, getUpcomingClasses, byIdOrReference } = await import(
+<<<<<<< HEAD
   pathToFileURL(path.join(root, "services/stats.service.js")).href
 );
 const { formatIsoDate, formatDisplayDate, toLocalIsoDate, formatTimeAgo, formatCompactNaira } =
   await import(pathToFileURL(path.join(root, "config/constants.js")).href);
 const auth = await import(pathToFileURL(path.join(root, "middleware/auth.middleware.js")).href);
+=======
+  path.join(root, "services/stats.service.js")
+);
+const { formatIsoDate, formatDisplayDate, toLocalIsoDate, formatTimeAgo, formatCompactNaira } =
+  await import(path.join(root, "config/constants.js"));
+const auth = await import(path.join(root, "middleware/auth.middleware.js"));
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
 /* --------------------------------------------------------------- KPI deltas -- */
 

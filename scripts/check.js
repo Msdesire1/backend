@@ -10,7 +10,11 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+<<<<<<< HEAD
 import { fileURLToPath, pathToFileURL } from "node:url";
+=======
+import { fileURLToPath } from "node:url";
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP = new Set(["node_modules", ".git", ".claude", "scripts"]);
@@ -39,7 +43,11 @@ for (const file of files) {
   // here would do far more than check that it parses.
   if (/^(index\.js|tests\/)/.test(relative(file))) continue;
   try {
+<<<<<<< HEAD
     await import(pathToFileURL(file).href);
+=======
+    await import(file);
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
   } catch (error) {
     failures.push([relative(file), error.message]);
   }
@@ -51,7 +59,11 @@ if (failures.length) process.exit(1);
 
 /* ------------------------------------------------------------------- routes -- */
 
+<<<<<<< HEAD
 const { mountedRouters } = await import(pathToFileURL(path.join(root, "app.js")).href);
+=======
+const { mountedRouters } = await import(path.join(root, "app.js"));
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
 /**
  * Walk a router's layer stack. Express 5 keeps the mount path of a nested router
