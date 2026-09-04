@@ -83,7 +83,6 @@ export const sendEmail = async ({ to, subject, text, html }) => {
     console.info(`[email:dev] SMTP not configured — would send to ${to}\nSubject: ${subject}\n${text || html}`);
     return;
   }
-  const publicIp = await getPublicIp();
   try {
     // Render Free blocks SMTP ports. Prefer Brevo's HTTPS API whenever its key
     // is present; HTTPS (443) works on all Render plans.
@@ -93,7 +92,10 @@ export const sendEmail = async ({ to, subject, text, html }) => {
     return info;
   } catch (error) {
     const err = new Error(error.message);
-    err.publicIp = publicIp;
+    // Looking up the server IP is useful diagnostic context, but it must never
+    // delay a successful delivery.  Previously every OTP waited for this
+    // external request (up to three seconds) before Brevo/SMTP was contacted.
+    err.publicIp = await getPublicIp();
     err.code = error.code;
     err.command = error.command;
     err.response = error.response;
