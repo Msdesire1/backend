@@ -11,7 +11,7 @@ export const DB_NAME = "main";
 /* ------------------------------------------------------------------ money -- */
 
 // The dashboard shows "₦3,000" for the WOFBI registration fee.
-export const COURSE_FEE_NAIRA = 3000;
+export const COURSE_FEE_NAIRA = 2000;
 export const CURRENCY_SYMBOL = "₦";
 
 /** 3000 -> "₦3,000" — matches COURSE_FEE in app/dashboard/user/payments/page.jsx */
@@ -361,9 +361,9 @@ export const GRIDFS_BUCKET = "uploads";
 
 /** Bank details rendered in the UserDashboard.jsx payment card. */
 export const BANK_DETAILS = {
-  accountName: "Living Faith Church",
-  bankName: "Access Bank",
-  accountNumber: "0123456789",
+  accountName: "LFC-ILORIN WOFBI ACCOUNT ",
+  bankName: "Zenith Bank",
+  accountNumber: "1227870168",
   amount: COURSE_FEE_NAIRA,
 };
 
@@ -376,12 +376,12 @@ export const CLASS_SCHEDULE = {
   venue: "Winners Chapel New Jerusalem Church, Gaa-imam Ilorin, Kwara state",
 };
 
-/** Current intake. "Spring 2026" is the student-facing label, "Aug 2026" the admin one. */
+/** Current intake. "Spring 2027" is the student-facing label, "Aug 2027" the admin one. */
 export const CURRENT_INTAKE = {
-  code: "SPRING2026",
-  label: "Spring 2026",
-  adminLabel: "Aug 2026",
-  year: 2026,
+  code: "SPRING2027",
+  label: "Spring 2027",
+  adminLabel: "Aug 2027",
+  year: 2027,
 };
 
 /** The four milestones in app/dashboard/user/overview/page.jsx. */

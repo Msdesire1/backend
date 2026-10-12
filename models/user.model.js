@@ -8,7 +8,7 @@ const nameValidator = {
 };
 
 const userSchema = new mongoose.Schema(
-  { 
+  {
     firstName: {
       type: String,
       required: true,
