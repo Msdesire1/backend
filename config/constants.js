@@ -170,7 +170,7 @@ export const COURSES = [
     code: "LCC",
     name: "Leadership Certificate Course",
     period: "Next level",
-    duration: "6 weeks",
+    duration: "2 weeks",
     feeNaira: 2000,
     description:
       "Deepen your understanding of leadership, stewardship, and ministry service.",
@@ -184,7 +184,7 @@ export const COURSES = [
     code: "LDC",
     name: "Leadership Diploma Course",
     period: "Advanced level",
-    duration: "12 weeks",
+    duration: "2 weeks",
     feeNaira: 2000,
     description:
       "A deeper equipping programme for leaders pursuing excellence in every sphere.",
