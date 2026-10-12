@@ -157,7 +157,7 @@ export const COURSES = [
     name: "Basic Certificate Course",
     period: "Two-week intensive",
     duration: "2 weeks",
-    feeNaira: 3000,
+    feeNaira: 2000,
     description:
       "Build a solid foundation in the Word and develop habits for victorious living.",
     availableMessage: "Available now",
@@ -171,7 +171,7 @@ export const COURSES = [
     name: "Leadership Certificate Course",
     period: "Next level",
     duration: "6 weeks",
-    feeNaira: 3000,
+    feeNaira: 2000,
     description:
       "Deepen your understanding of leadership, stewardship, and ministry service.",
     availableMessage: "Available now",
@@ -185,7 +185,7 @@ export const COURSES = [
     name: "Leadership Diploma Course",
     period: "Advanced level",
     duration: "12 weeks",
-    feeNaira: 3000,
+    feeNaira: 2000,
     description:
       "A deeper equipping programme for leaders pursuing excellence in every sphere.",
     availableMessage: "Available now",
