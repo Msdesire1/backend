@@ -74,7 +74,8 @@ web_modules/
 .env.test
 .env.production
 .env.local
-.env.*.local
+.env.*.
+.env.example
 # Anything that looks like a copy of .env — these hold real secrets, and only
 # .env.example is safe to commit. The catch-all comes first and .env.example is
 # re-included after it, so a copy nobody thought to name here is still ignored.

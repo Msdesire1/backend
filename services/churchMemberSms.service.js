@@ -4,10 +4,50 @@ import ChurchMemberMessage from "../models/churchMemberMessage.model.js";
 const RUN_INTERVAL_MS = 15 * 60 * 1000;
 const CLAIM_LEASE_MS = 10 * 60 * 1000;
 
+const logTextBeeResponse = (status, payload) => {
+  const details = {
+    httpStatus: status,
+    success: payload?.success,
+    message: payload?.message,
+    error: payload?.error,
+    errorCode: payload?.errorCode,
+    smsBatchId: payload?.smsBatchId,
+    recipientCount: payload?.recipientCount,
+    estimatedCompletionAt: payload?.estimatedCompletionAt,
+  };
+  for (const key of Object.keys(details)) {
+    if (details[key] === undefined) delete details[key];
+  }
+
+  const log = status >= 400 || payload?.success !== true ? console.error : console.info;
+  log(`[TextBee] SMS request response: ${JSON.stringify(details)}`);
+};
+
+const normalizeTextBeePhone = (value) => {
+  if (typeof value !== "string") {
+    throw new Error("TextBee recipients must be phone number strings in E.164 format.");
+  }
+
+  let phone = value.trim().replace(/\p{Cf}/gu, "").replace(/[\s().-]/g, "");
+  if (/^0\d+$/.test(phone)) phone = `+234${phone.slice(1)}`;
+  else if (/^234\d+$/.test(phone)) phone = `+${phone}`;
+
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+    throw new Error("TextBee recipients must use E.164 format, such as +2348012345678.");
+  }
+  return phone;
+};
+
 export const sendSms = async (recipients, message) => {
   const apiKey = process.env.TEXTBEE_API_KEY;
   if (!apiKey?.trim()) {
     throw new Error("TEXTBEE_API_KEY is not configured.");
+  }
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error("TextBee requires at least one recipient.");
+  }
+  if (typeof message !== "string" || !message.trim()) {
+    throw new Error("TextBee requires a non-empty message.");
   }
 
   const baseURL = (process.env.TEXTBEE_BASE_URL ?? "https://api.textbee.dev/api/v1").replace(/\/+$/, "");
@@ -17,11 +57,32 @@ export const sendSms = async (recipients, message) => {
       "x-api-key": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ recipients, message }),
+    body: JSON.stringify({
+      recipients: recipients.map(normalizeTextBeePhone),
+      message,
+      simSubscriptionId: 1,
+    }),
   });
-  if (!response.ok) throw new Error(`TextBee returned HTTP ${response.status}.`);
-  const payload = await response.json();
-  return payload.data;
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    if (!response.ok) {
+      logTextBeeResponse(response.status);
+      throw new Error(`TextBee returned HTTP ${response.status}.`);
+    }
+    logTextBeeResponse(response.status);
+    throw new Error("TextBee returned an invalid JSON response.");
+  }
+  logTextBeeResponse(response.status, payload);
+  if (!response.ok) {
+    const reason = payload?.message || payload?.error;
+    throw new Error(`TextBee returned HTTP ${response.status}${reason ? `: ${reason}` : "."}`);
+  }
+  if (payload?.success !== true) {
+    throw new Error(payload?.message || payload?.error || "TextBee did not accept the SMS batch.");
+  }
+  return payload;
 };
 
 const churchDateParts = (date = new Date()) =>
