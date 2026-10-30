@@ -25,6 +25,10 @@ import {
 } from "../controllers/admin.auth.controller.js";
 import { getAdminOverview, listStudents } from "../controllers/admin.controller.js";
 import {
+  exportChurchMembers,
+  listChurchMembers,
+} from "../controllers/church-member.controller.js";
+import {
   decideApplication,
   decidePayment,
   getApplicationDetail,
@@ -89,6 +93,8 @@ router.post("/payments/:id/decision", decidePayment);
 // in the attendance block below so all the student-scoped paths stay together.
 router.get("/students", listStudents);
 router.get("/students/:id/attendance", getStudentAttendance);
+router.get("/church-members/export", exportChurchMembers);
+router.get("/church-members", listChurchMembers);
 
 // Courses and lessons
 router.get("/courses", listAllCourses);

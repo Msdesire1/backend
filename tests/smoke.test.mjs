@@ -156,11 +156,31 @@ for (const path of [
   });
 }
 
-for (const path of ["/api/admin/overview", "/api/admin/applications", "/api/admin/admins"]) {
+for (const path of [
+  "/api/admin/overview",
+  "/api/admin/applications",
+  "/api/admin/admins",
+  "/api/admin/church-members",
+  "/api/admin/church-members/export",
+]) {
   const { status, body } = await call(path);
   check(`${path} demands an administrator`, () => {
     assert.equal(status, 401);
     assert.match(body.message, /[Aa]dministrator/);
+  });
+}
+
+{
+  const { status, body } = await call("/api/church-members", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  check("the public membership form validates without requiring an account", () => {
+    assert.equal(status, 422);
+    assert.equal(body.success, false);
+    assert.ok(body.errors.fullName);
+    assert.ok(body.errors.phone);
   });
 }
 

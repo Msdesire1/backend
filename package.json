@@ -7,7 +7,7 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "seed": "node scripts/seed.js",
-    "test": "node tests/multipart.test.mjs && node tests/middleware.test.mjs && node tests/stats.test.mjs && node tests/smoke.test.mjs",
+    "test": "node tests/multipart.test.mjs && node tests/middleware.test.mjs && node tests/stats.test.mjs && node tests/church-member.test.mjs && node tests/church-member-sms.test.mjs && node tests/smoke.test.mjs",
     "check": "node scripts/check.js",
     "verify:smtp": "node scripts/verify-smtp.js"
   },

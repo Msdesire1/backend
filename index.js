@@ -12,6 +12,7 @@ import mongoose from "mongoose";
 import app from "./app.js";
 import connectDB from "./config/database.js";
 import { initGridFS } from "./config/gridfs.js";
+import { startChurchSmsScheduler } from "./services/churchMemberSms.service.js";
 
 // `quiet` suppresses dotenv's own "injected env (19) from .env" banner — the
 // startup log is more useful without it.
@@ -47,6 +48,7 @@ const startServer = async () => {
   try {
     await connectDB();
     initGridFS();
+    const stopChurchSmsScheduler = startChurchSmsScheduler();
 
     const server = app.listen(PORT, () => {
       console.log(`WOFBI API listening on http://localhost:${PORT}`);
@@ -65,6 +67,7 @@ const startServer = async () => {
     // Finish in-flight requests and close the database cleanly on redeploy.
     const shutdown = (signal) => async () => {
       console.log(`\n${signal} received. Shutting down.`);
+      stopChurchSmsScheduler();
       server.close(async () => {
         await mongoose.connection.close();
         process.exit(0);

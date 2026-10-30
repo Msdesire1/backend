@@ -20,6 +20,7 @@ import announcementRouter from "./routes/announcement.routes.js";
 import certificateRouter from "./routes/certificate.routes.js";
 import fileRouter from "./routes/file.routes.js";
 import adminRouter from "./routes/admin.routes.js";
+import churchMemberRouter from "./routes/church-member.routes.js";
 
 const app = express();
 
@@ -69,6 +70,7 @@ export const mountedRouters = [
   ["/api/certificates", certificateRouter],
   ["/api/files", fileRouter],
   ["/api/admin", adminRouter],
+  ["/api/church-members", churchMemberRouter],
 ];
 
 for (const [prefix, router] of mountedRouters) app.use(prefix, router);

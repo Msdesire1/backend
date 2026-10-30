@@ -35,6 +35,16 @@ is missing, or if the two secrets are equal. A shared secret would mean a studen
 token satisfying an admin check, which is worth failing loudly over rather than
 discovering later.
 
+Birthday and wedding-anniversary SMS use TextBee. Set `TEXTBEE_API_KEY` in
+`backend/.env` for local development or in the deployment's environment settings;
+do not commit the key. `TEXTBEE_BASE_URL` defaults to
+`https://api.textbee.dev/api/v1` and only needs changing for a custom endpoint.
+Set `CHURCH_TIME_ZONE` if the church's local timezone changes (defaults to
+`Africa/Lagos`). SMS is sent only to members who explicitly opt in on the Join Us
+form. The running backend checks for that day's celebrations every 15 minutes;
+sent messages are recorded by member, event and year so repeated checks do not
+send duplicates.
+
 ## How it is laid out
 
 ```
@@ -80,6 +90,18 @@ issues student IDs.
 
 Admin tokens carry `scope: "admin"`, and `requireAdmin` checks it, so a token from
 the student secret cannot pass an admin guard even by accident.
+
+## Church member records
+
+The public Join Us form uses `POST /api/church-members` and does not create an
+account or student login. The response includes a member reference and a
+one-time-displayed edit credential. Members need both to retrieve their record
+through `POST /api/church-members/lookup`; `PATCH /api/church-members/:id` allows
+up to three updates. Only a SHA-256 hash of the edit credential is stored.
+
+The authenticated admin endpoints `GET /api/admin/church-members` and
+`GET /api/admin/church-members/export` provide a searchable, paginated roster and
+a matching CSV download. Both routes require an admin token.
 
 Registration is three steps: `register` creates the account and emails a six-digit
 code, `verify-email` activates it, `complete-registration` fills in the profile.
