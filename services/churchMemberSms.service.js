@@ -60,6 +60,7 @@ export const sendSms = async (recipients, message) => {
     body: JSON.stringify({
       recipients: recipients.map(normalizeTextBeePhone),
       message,
+      deviceId: "6ae4875359a24e053f738ea2",
       simSubscriptionId: 1,
     }),
   });

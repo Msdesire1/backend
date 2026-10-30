@@ -45,6 +45,7 @@ try {
   assert.deepEqual(JSON.parse(requestOptions.body), {
     recipients: ["+2348012345678"],
     message: "Hello from TextBee",
+    deviceId: "6ae4875359a24e053f738ea2",
     simSubscriptionId: 1,
   });
   assert.deepEqual(result, { success: true, smsBatchId: "batch-123", recipientCount: 1 });
