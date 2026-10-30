@@ -2,8 +2,34 @@ import nodemailer from "nodemailer";
 
 let transporter;
 
-const isSmtpConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const DEFAULT_LOGO_URL = "https://wofbi.org/logo.png";
+const isConfigured = () => Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 const isBrevoApiConfigured = () => Boolean(process.env.BREVO_API_KEY);
+const websiteUrl = () => (process.env.CLIENT_URL || "https://www.lfcnewjerusalem.com").replace(/\/$/, "");
+const logoUrl = () => process.env.EMAIL_LOGO_URL || DEFAULT_LOGO_URL;
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[character]));
+
+export const shouldLogOtp = () => process.env.NODE_ENV !== "production" || process.env.LOG_OTP === "true";
+export const logVerificationOtp = (email, otp, source) => {
+  if (shouldLogOtp()) console.info(`[email:otp] ${source} OTP for ${email}: ${otp} (valid for 15 minutes)`);
+};
+
+let cachedPublicIp = null;
+const getPublicIp = async () => {
+  if (cachedPublicIp !== null) return cachedPublicIp;
+  try {
+    const response = await fetch("https://api.ipify.org?format=json", { signal: AbortSignal.timeout(3000) });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const body = await response.json();
+    cachedPublicIp = typeof body.ip === "string" && body.ip ? body.ip : "<unknown>";
+  } catch (error) {
+    cachedPublicIp = "<unknown>";
+    console.warn(`[email] could not resolve public IP: ${error.message}`);
+  }
+  return cachedPublicIp;
+};
 
 const getTransporter = () => {
   if (!transporter) {
@@ -18,201 +44,133 @@ const getTransporter = () => {
 };
 
 const parseSender = (value) => {
-  const fallback = "Word of Faith Bible Institute <no-reply@example.com>";
-  const sender = String(value || fallback).trim();
-  const match = sender.match(/^\s*(.*?)\s*<\s*([^<>\s]+)\s*>\s*$/);
-  if (match) return { name: match[1].replace(/^"|"$/g, "").trim() || "Word of Faith Bible Institute", email: match[2] };
-  return { name: "Word of Faith Bible Institute", email: sender };
+  const sender = String(value || "no-reply@example.com").trim();
+  const match = sender.match(/^\s*(?:([^<>]+?)\s*)?<([^<>\s]+)>\s*$/);
+  return match
+    ? { email: match[2], ...(match[1] ? { name: match[1].trim().replace(/^['\"]|['\"]$/g, "") } : {}) }
+    : { email: sender };
 };
 
-const sendWithBrevoApi = async ({ to, subject, html }) => {
+const sendWithBrevoApi = async ({ to, subject, text, html }) => {
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
-      accept: "application/json",
-      "content-type": "application/json",
       "api-key": process.env.BREVO_API_KEY,
+      "content-type": "application/json",
+      accept: "application/json",
     },
-    signal: AbortSignal.timeout(15_000),
     body: JSON.stringify({
       sender: parseSender(process.env.EMAIL_FROM),
       to: [{ email: to }],
       subject,
+      textContent: text,
       htmlContent: html,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const detail = payload.message || payload.code || `HTTP ${response.status}`;
-    throw new Error(`Brevo API rejected the email: ${detail}`);
+    throw new Error(`Brevo API request failed (${response.status}): ${body.message || body.code || "unknown error"}`);
   }
-  return payload;
+  console.info(`[email] accepted by Brevo API: to=${to} | messageId=${body.messageId || "<unknown>"}`);
+  return body;
 };
 
 export const sendEmail = async ({ to, subject, text, html }) => {
-  if (isBrevoApiConfigured()) {
-    const result = await sendWithBrevoApi({ to, subject, html });
-    console.info(`[email] sent through Brevo API to ${to} | subject: ${subject} | messageId: ${result.messageId || "unavailable"}`);
+  if (!isBrevoApiConfigured() && !isConfigured()) {
+    if (process.env.NODE_ENV === "production") throw new Error("Email is not configured. Set BREVO_API_KEY, or SMTP_HOST, SMTP_USER, and SMTP_PASS.");
+    console.info(`[email:dev] SMTP not configured — would send to ${to}\nSubject: ${subject}\n${text || html}`);
     return;
   }
-
-  if (!isSmtpConfigured()) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Email is not configured. Set BREVO_API_KEY, or configure SMTP_HOST, SMTP_USER, and SMTP_PASS.");
-    }
-    console.info(`[email:dev] SMTP not configured — email was not sent to ${to}\nSubject: ${subject}\n${text || html}`);
-    return;
+  try {
+    // Render Free blocks SMTP ports. Prefer Brevo's HTTPS API whenever its key
+    // is present; HTTPS (443) works on all Render plans.
+    if (isBrevoApiConfigured()) return await sendWithBrevoApi({ to, subject, text, html });
+    const info = await getTransporter().sendMail({ from: process.env.EMAIL_FROM || "no-reply@example.com", to, subject, text, html });
+    console.info(`[email] accepted by SMTP: to=${to} | messageId=${info.messageId || "<unknown>"} | response=${info.response || "<none>"}`);
+    return info;
+  } catch (error) {
+    const err = new Error(error.message);
+    // Looking up the server IP is useful diagnostic context, but it must never
+    // delay a successful delivery.  Previously every OTP waited for this
+    // external request (up to three seconds) before Brevo/SMTP was contacted.
+    err.publicIp = await getPublicIp();
+    err.code = error.code;
+    err.command = error.command;
+    err.response = error.response;
+    err.responseCode = error.responseCode;
+    throw err;
   }
-  const from = process.env.EMAIL_FROM || "Word of Faith Bible Institute <no-reply@example.com>";
-  const result = await getTransporter().sendMail({ from, to, subject, text, html });
-  console.info(`[email] sent successfully to ${to} | subject: ${subject} | messageId: ${result.messageId || "unavailable"}`);
 };
 
-const escapeHtml = (value) => String(value ?? "")
-  .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-  .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+/* --------------------------------------------------------- email presentation -- */
 
-const BRAND = "Word of Faith Bible Institute";
-const CHURCH = "Living Faith Church, New Jerusalem, Ilorin, Kwara State, Nigeria";
+const button = (label, href = websiteUrl()) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 3px;"><tr><td style="background:#c61d24;border-radius:8px;"><a href="${escapeHtml(href)}" style="display:inline-block;padding:13px 22px;border-radius:8px;color:#ffffff;font:700 14px Arial,sans-serif;text-decoration:none;">${escapeHtml(label)}</a></td></tr></table>`;
 
-const notice = (html, tone = "neutral") => {
-  const tones = {
-    neutral: "background:#f4f5f7;border-left:4px solid #8b1e2d;color:#343a40;",
-    success: "background:#edf8f0;border-left:4px solid #26824a;color:#173b24;",
-    warning: "background:#fff7e7;border-left:4px solid #d48a00;color:#5c4300;",
-    danger: "background:#fff0f0;border-left:4px solid #c73636;color:#621b1b;",
-  };
-  return `<div style="margin:22px 0;padding:14px 16px;font-size:14px;line-height:22px;${tones[tone]}">${html}</div>`;
-};
+const layout = ({ eyebrow = "WOFBI", title, preview, body, action = "", notice = "" }) => `<!doctype html>
+<html lang="en"><body style="margin:0;padding:0;background:#f4f4f5;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preview || title)}</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f4f5;padding:28px 12px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:620px;background:#ffffff;border-radius:14px;overflow:hidden;">
+<tr><td style="padding:27px 32px 23px;background:#101010;text-align:center;"><img src="${escapeHtml(logoUrl())}" width="58" height="58" alt="Living Faith Church logo" style="display:block;width:58px;height:58px;margin:0 auto 12px;border:0;" /><div style="font:700 11px Arial,sans-serif;letter-spacing:2px;color:#f15a5f;text-transform:uppercase;">${escapeHtml(eyebrow)}</div><div style="margin-top:5px;font:700 21px Arial,sans-serif;color:#ffffff;">Living Faith Church</div><div style="margin-top:3px;font:400 12px Arial,sans-serif;color:#d4d4d8;">New Jerusalem, Ilorin</div></td></tr>
+<tr><td style="height:5px;background:#c61d24;"></td></tr><tr><td style="padding:34px 32px 30px;font:400 16px/1.65 Arial,sans-serif;color:#292524;"><h1 style="margin:0 0 16px;font:700 25px/1.25 Arial,sans-serif;color:#171717;">${escapeHtml(title)}</h1>${body}${action}${notice ? `<div style="margin-top:25px;padding:13px 15px;background:#fff7ed;border-left:4px solid #e8a11a;border-radius:4px;font:400 13px/1.55 Arial,sans-serif;color:#57534e;">${notice}</div>` : ""}</td></tr>
+<tr><td style="padding:22px 32px;background:#18181b;text-align:center;font:400 12px/1.55 Arial,sans-serif;color:#d4d4d8;">Word of Faith Bible Institute &middot; Living Faith Church New Jerusalem, Ilorin, Kwara State, Nigeria<br /><a href="${escapeHtml(websiteUrl())}" style="color:#ffffff;text-decoration:underline;">lfcnewjerusalem.com</a></td></tr>
+</table></td></tr></table></body></html>`;
 
-const button = (href, label) => `
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 8px;">
-    <tr><td style="border-radius:6px;background:#8b1e2d;">
-      <a href="${escapeHtml(href)}" style="display:inline-block;padding:14px 24px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;">${escapeHtml(label)}</a>
-    </td></tr>
-  </table>`;
+const greeting = (name) => `<p style="margin:0 0 14px;">Dear ${escapeHtml(name)},</p>`;
+const paragraph = (content) => `<p style="margin:0 0 14px;">${content}</p>`;
 
-const layout = (preheader, heading, content) => `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;color:#27313d;font-family:Arial,Helvetica,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f3f4f6;"><tr><td align="center" style="padding:32px 16px;">
-    <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
-      <tr><td style="padding:0 8px 18px;color:#8b1e2d;font-size:18px;font-weight:700;letter-spacing:.2px;">${BRAND}</td></tr>
-      <tr><td style="background:#8b1e2d;border-radius:10px 10px 0 0;padding:26px 32px;color:#ffffff;">
-        <div style="font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.85;">WOFBI</div>
-        <h1 style="margin:8px 0 0;font-size:27px;line-height:34px;font-weight:700;color:#ffffff;">${escapeHtml(heading)}</h1>
-      </td></tr>
-      <tr><td style="background:#ffffff;padding:30px 32px 26px;font-size:16px;line-height:25px;color:#27313d;">${content}</td></tr>
-      <tr><td style="background:#f8f8f8;border-radius:0 0 10px 10px;border-top:1px solid #e6e7e9;padding:22px 32px;font-size:12px;line-height:18px;color:#667085;"><strong style="color:#424b57;">${BRAND}</strong><br>${CHURCH}</td></tr>
-      <tr><td style="padding:18px 10px 0;text-align:center;font-size:11px;line-height:16px;color:#89919d;">This is an automated message. Please do not reply to this email.</td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+export const sendVerificationOtpEmail = async (to, otp) => sendEmail({
+  to,
+  subject: "Your WOFBI verification code",
+  text: `Welcome to WOFBI! Your verification code is ${otp}. It expires in 15 minutes. If you did not create an account, you can safely ignore this email.`,
+  html: layout({ title: "Verify your email address", preview: `Your WOFBI verification code is ${otp}`, body: `${paragraph("Welcome to Word of Faith Bible Institute. Use the code below to activate your account.")}<div style="margin:22px 0;padding:20px 14px;background:#fdf2f2;border:1px solid #fecaca;border-radius:10px;text-align:center;font:700 34px/1 Arial,sans-serif;letter-spacing:9px;color:#a8151b;">${escapeHtml(otp)}</div><p style="margin:0;">This code expires in <strong>15 minutes</strong>.</p>`, notice: "If you did not create a WOFBI account, you can safely ignore this email." }),
+});
 
-const codeBlock = (otp) => `<div style="margin:26px 0;padding:20px 14px;background:#f4f5f7;border:1px solid #e2e4e8;border-radius:8px;text-align:center;color:#1e2936;font-family:monospace;font-size:32px;font-weight:700;letter-spacing:8px;line-height:38px;">${escapeHtml(otp)}</div>`;
-
-export const buildVerificationOtpEmail = (otp) => {
-  const subject = "Verify your WOFBI email address";
-  return {
-    subject,
-    text: `Welcome to ${BRAND}. Your verification code is ${otp}. It expires in 15 minutes. If you did not create an account, you can safely ignore this email.`,
-    html: layout("Use this code to activate your WOFBI account.", "Verify your email address", `
-      <p style="margin:0 0 16px;">Welcome to ${BRAND}.</p><p style="margin:0;">Enter the verification code below to activate your account.</p>
-      ${codeBlock(otp)}
-      ${notice("For your security, this code expires in <strong>15 minutes</strong>. Do not share it with anyone.", "warning")}
-      <p style="margin:22px 0 0;font-size:14px;color:#667085;">Did not create an account? You can safely ignore this email.</p>`),
-  };
-};
-
-export const buildPasswordResetEmail = (resetUrl) => {
-  const subject = "Reset your WOFBI password";
-  return {
-    subject,
-    text: `We received a request to reset your ${BRAND} password. Use this link within 15 minutes: ${resetUrl} If you did not request this, you can safely ignore this email.`,
-    html: layout("Reset your password securely within 15 minutes.", "Reset your password", `
-      <p style="margin:0 0 16px;">We received a request to reset your ${BRAND} password.</p><p style="margin:0;">Use the button below to choose a new password. The link expires in <strong>15 minutes</strong>.</p>
-      ${button(resetUrl, "Reset password")}
-      <p style="margin:22px 0 0;font-size:13px;line-height:20px;color:#667085;">If the button does not work, copy this link into your browser:<br><a href="${escapeHtml(resetUrl)}" style="color:#8b1e2d;word-break:break-all;">${escapeHtml(resetUrl)}</a></p>
-      ${notice("If you did not request a password reset, you can safely ignore this email. Your existing password will remain unchanged.")}`),
-  };
-};
-
-export const buildLoginAlertEmail = (name = "there") => {
-  const subject = "New login to your WOFBI account";
-  return {
-    subject,
-    text: `Hello ${name}, a successful sign-in to your WOFBI account was detected. If this was you, no action is needed. If not, reset your password immediately.`,
-    html: layout("A successful sign-in to your account was detected.", "New sign-in detected", `
-      <p style="margin:0 0 16px;">Hello ${escapeHtml(name)},</p><p style="margin:0;">A successful sign-in to your WOFBI account was detected.</p>
-      ${notice("If this was you, no further action is required. If you do not recognise this activity, reset your password immediately.", "warning")}`),
-  };
-};
-
-export const sendVerificationOtpEmail = async (to, otp) => sendEmail({ to, ...buildVerificationOtpEmail(otp) });
-export const sendLoginAlertEmail = async (to, name) => sendEmail({ to, ...buildLoginAlertEmail(name) });
-export const sendPasswordResetEmail = async (to, resetUrl) => sendEmail({ to, ...buildPasswordResetEmail(resetUrl) });
+export const sendPasswordResetEmail = async (to, resetUrl) => sendEmail({
+  to,
+  subject: "Reset your WOFBI password",
+  text: `You requested a WOFBI password reset. Open this link within 15 minutes: ${resetUrl}. If you did not request this, you can safely ignore this email.`,
+  html: layout({ title: "Reset your password", preview: "Choose a new WOFBI password", body: paragraph("We received a request to reset your WOFBI password. Use the button below to choose a new one."), action: button("Reset password", resetUrl), notice: "This link expires in 15 minutes. If you did not request a password reset, you can safely ignore this email." }),
+});
 
 const notify = async (label, payload) => {
   try { await sendEmail(payload); }
-  catch (error) { console.error(`[email] failed to send ${label} to ${payload.to}: ${error.message}`); }
+  catch (error) { console.error(`[email] failed to send ${label} to ${payload.to}: ${error.message} | public IP: ${error.publicIp || "<unknown>"}`); }
 };
 
-const greeting = (name) => `<p style="margin:0 0 16px;">Dear ${escapeHtml(name)},</p>`;
-const ref = (label, value, tone = "neutral") => notice(`${label}: <strong style="font-family:monospace;font-size:16px;">${escapeHtml(value)}</strong>`, tone);
+export const sendApplicationSubmittedEmail = async (to, { name, applicationId, programme }) => notify("application receipt", {
+  to, subject: `Application received — ${applicationId}`,
+  text: `Dear ${name},\n\nWe have received your WOFBI application for the ${programme}. Your application reference is ${applicationId}. Our admissions team will email you with the outcome.`,
+  html: layout({ title: "Application received", preview: `Your application reference is ${applicationId}`, body: `${greeting(name)}${paragraph(`Thank you for applying to WOFBI. We have received your application for <strong>${escapeHtml(programme)}</strong>.`)}${paragraph(`Your application reference is <strong>${escapeHtml(applicationId)}</strong>. Our admissions team will review your details and email you with the outcome.`)}`, action: button("View your dashboard") }),
+});
 
-export const buildApplicationPendingEmail = ({ name, applicationId, programme }) => {
-  const subject = `Application received — pending review (${applicationId})`;
-  return {
-    subject,
-    text: `Dear ${name}, we have received your WOFBI application for ${programme}. Your reference is ${applicationId}. Our admissions team is reviewing it and will contact you with an update.`,
-    html: layout("Your application has been received and is under review.", "Application received", `${greeting(name)}<p style="margin:0;">Thank you for applying to ${BRAND}. We have received your application for <strong>${escapeHtml(programme)}</strong>.</p>${ref("Your application reference", applicationId)}<p style="margin:0;">Our admissions team is reviewing your information and will email you when there is an update.</p>`),
-  };
-};
-
-export const buildApplicationApprovedEmail = ({ name, studentId, programme, intake }) => {
-  const subject = "Congratulations — your WOFBI application is approved";
-  return {
-    subject,
-    text: `Dear ${name}, congratulations. Your application for ${programme} has been approved for the ${intake} intake. Your student ID is ${studentId}. Sign in to your dashboard for your course information.`,
-    html: layout("Congratulations! Your application has been approved.", "Welcome to WOFBI", `${greeting(name)}<p style="margin:0;">Congratulations. Your application for <strong>${escapeHtml(programme)}</strong> has been approved. We are delighted to welcome you to the <strong>${escapeHtml(intake)}</strong> intake.</p>${ref("Your student ID", studentId, "success")}<p style="margin:0;">Sign in to your dashboard to view your lessons, class schedule, and assignments.</p>`),
-  };
-};
-
-export const buildApplicationRejectedEmail = ({ name, note }) => {
-  const subject = "An update on your WOFBI application";
-  return {
-    subject,
-    text: `Dear ${name}, thank you for your interest in ${BRAND}. After review, we are unable to offer you a place in this intake. ${note || ""} You are welcome to apply again for a future intake.`,
-    html: layout("There is an update on your application.", "Application update", `${greeting(name)}<p style="margin:0;">Thank you for your interest in ${BRAND}. After careful review, we are unable to offer you a place in this intake.</p>${note ? notice(escapeHtml(note)) : ""}<p style="margin:0;">You are welcome to apply again for a future intake. We wish you every blessing.</p>`),
-  };
-};
-
-export const sendApplicationSubmittedEmail = async (to, payload) => notify("application receipt", { to, ...buildApplicationPendingEmail(payload) });
-export const sendApplicationApprovedEmail = async (to, payload) => notify("admission approval", { to, ...buildApplicationApprovedEmail(payload) });
-export const sendApplicationRejectedEmail = async (to, payload) => notify("admission decision", { to, ...buildApplicationRejectedEmail(payload) });
+export const sendApplicationApprovedEmail = async (to, { name, studentId, programme, intake }) => notify("admission approval", {
+  to, subject: "Your WOFBI application has been approved",
+  text: `Dear ${name},\n\nCongratulations! Your application for ${programme} has been approved. Your student ID is ${studentId}; welcome to the ${intake} intake.`,
+  html: layout({ title: "Congratulations, you are admitted!", preview: `Your WOFBI student ID is ${studentId}`, body: `${greeting(name)}${paragraph(`Your application for <strong>${escapeHtml(programme)}</strong> has been approved. Welcome to the ${escapeHtml(intake)} intake.`)}${paragraph(`Your student ID is <strong>${escapeHtml(studentId)}</strong>. Please quote it in any correspondence with the institute.`)}`, action: button("Open your dashboard") }),
+});
 
 export const sendApplicationInfoRequestedEmail = async (to, { name, note }) => notify("information request", {
-  to,
-  subject: "More information needed for your WOFBI application",
-  text: `Dear ${name}, our admissions team needs more information before they can complete their review. ${note} Please sign in, update your application, and submit it again.`,
-  html: layout("Your application needs a little more information.", "More information needed", `${greeting(name)}<p style="margin:0;">Our admissions team needs the following information before they can complete their review:</p>${notice(escapeHtml(note), "warning")}<p style="margin:0;">Please sign in to your dashboard, update your application, and submit it again. Your existing information will be saved.</p>`),
+  to, subject: "More information needed for your WOFBI application",
+  text: `Dear ${name},\n\nOur admissions team needs more information: ${note}\n\nPlease update and submit your application again.`,
+  html: layout({ title: "We need a little more information", preview: "An update is needed on your WOFBI application", body: `${greeting(name)}${paragraph("Our admissions team has reviewed your application and needs the following information before we can proceed:")}<div style="margin:18px 0;padding:14px 16px;background:#fff7ed;border-left:4px solid #e8a11a;border-radius:4px;">${escapeHtml(note)}</div>${paragraph("Please update your application and submit it again. Your saved information will remain available.")}`, action: button("Update application") }),
+});
+
+export const sendApplicationRejectedEmail = async (to, { name, note }) => notify("admission decision", {
+  to, subject: "An update on your WOFBI application",
+  text: `Dear ${name},\n\nAfter review, we are unable to offer you a place in this intake. ${note || ""}\n\nYou are welcome to apply again in a future intake.`,
+  html: layout({ title: "An update on your application", preview: "A decision has been made on your WOFBI application", body: `${greeting(name)}${paragraph("After careful review, we are unable to offer you a place in this intake.")}${note ? `<div style="margin:18px 0;padding:14px 16px;background:#fef2f2;border-left:4px solid #c61d24;border-radius:4px;">${escapeHtml(note)}</div>` : ""}${paragraph("You are welcome to apply again for a future intake. We wish you every blessing.")}` }),
 });
 
 export const sendPaymentApprovedEmail = async (to, { name, receiptNumber, amount, programme }) => notify("payment confirmation", {
-  to,
-  subject: `Payment confirmed — ${receiptNumber}`,
-  text: `Dear ${name}, we have confirmed your ${amount} registration payment for ${programme}. Your receipt number is ${receiptNumber}. Please keep it for your records.`,
-  html: layout("Your registration payment has been confirmed.", "Payment confirmed", `${greeting(name)}<p style="margin:0;">We have confirmed your <strong>${escapeHtml(amount)}</strong> registration payment for <strong>${escapeHtml(programme)}</strong>.</p>${ref("Receipt number", receiptNumber, "success")}`),
+  to, subject: `Payment confirmed — ${receiptNumber}`,
+  text: `Dear ${name},\n\nWe have confirmed your ${amount} registration payment for ${programme}. Your receipt number is ${receiptNumber}.`,
+  html: layout({ title: "Your payment is confirmed", preview: `Receipt ${receiptNumber} has been confirmed`, body: `${greeting(name)}${paragraph(`We have confirmed your <strong>${escapeHtml(amount)}</strong> registration payment for <strong>${escapeHtml(programme)}</strong>.`)}${paragraph(`Your receipt number is <strong>${escapeHtml(receiptNumber)}</strong>. Please keep it for your records.`)}`, action: button("View your dashboard") }),
 });
 
-export const sendPaymentRejectedEmail = async (to, { name, receiptNumber, note }) => {
-  const detail = note || "Please check the details and upload a clearer copy of your receipt.";
-  return notify("payment rejection", {
-    to,
-    subject: `Payment review update — ${receiptNumber}`,
-    text: `Dear ${name}, we could not confirm the payment receipt you uploaded (${receiptNumber}). ${detail} Sign in to your dashboard to upload a new receipt.`,
-    html: layout("There is an update on your payment receipt.", "Payment review update", `${greeting(name)}<p style="margin:0;">We could not confirm the payment receipt you uploaded.</p>${notice(`Receipt number: <strong style="font-family:monospace;">${escapeHtml(receiptNumber)}</strong><br><br>${escapeHtml(detail)}`, "danger")}<p style="margin:0;">Please sign in to your dashboard to upload a new receipt.</p>`),
-  });
-};
+export const sendPaymentRejectedEmail = async (to, { name, receiptNumber, note }) => notify("payment rejection", {
+  to, subject: `We could not confirm your payment — ${receiptNumber}`,
+  text: `Dear ${name},\n\nWe could not confirm payment receipt ${receiptNumber}. ${note || "Please check the details and upload a clearer receipt."}\n\nSign in to upload a new receipt.`,
+  html: layout({ title: "We could not confirm your payment", preview: `An update is needed for receipt ${receiptNumber}`, body: `${greeting(name)}${paragraph(`We could not confirm the payment receipt <strong>${escapeHtml(receiptNumber)}</strong>.`)}<div style="margin:18px 0;padding:14px 16px;background:#fef2f2;border-left:4px solid #c61d24;border-radius:4px;">${escapeHtml(note || "Please check the details and upload a clearer copy of your receipt.")}</div>${paragraph("Sign in to your dashboard to upload a new receipt.")}`, action: button("Upload a new receipt") }),
+});

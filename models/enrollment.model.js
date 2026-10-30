@@ -12,6 +12,7 @@ import { CURRENT_INTAKE, ENROLLMENT_STATUS, ENROLLMENT_STATUSES } from "../confi
  * programme's current published lesson count whenever it is read, so adding a
  * lesson recalculates everyone's progress instead of leaving stale numbers behind.
  */
+
 const completedLessonSchema = new mongoose.Schema(
   {
     lesson: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson", required: true },
@@ -45,11 +46,6 @@ const enrollmentSchema = new mongoose.Schema(
 
 // A student can only hold one place per programme.
 enrollmentSchema.index({ user: 1, course: 1 }, { unique: true });
-// Keep the one-active-course rule true even when two enrollment requests race.
-enrollmentSchema.index(
-  { user: 1 },
-  { unique: true, partialFilterExpression: { status: ENROLLMENT_STATUS.ACTIVE } },
-);
 enrollmentSchema.index({ course: 1, status: 1 });
 
 enrollmentSchema.methods.hasCompleted = function hasCompleted(lessonId) {

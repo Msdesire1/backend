@@ -1,14 +1,4 @@
-/**
- * Administrator sign-in.
- *
- * Deliberately separate from controllers/auth.controller.js in every respect that
- * matters: its own collection, its own route prefix, its own JWT secret, and a
- * shorter token life. A stolen or leaked student token cannot be replayed here,
- * and a bug in student registration cannot mint an admin session.
- *
- * The `scope: "admin"` claim is what lets middleware/auth.middleware.js tell the
- * two token families apart before it decides which secret to verify against.
- */
+
 import jwt from "jsonwebtoken";
 import Admin from "../models/admin.model.js";
 import ApiError from "../utils/ApiError.js";

@@ -1,12 +1,12 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import { sendLoginAlertEmail, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
+import { logVerificationOtp, sendPasswordResetEmail, sendVerificationOtpEmail } from "../utils/email.js";
 import { resetRateLimit } from "../middleware/rateLimit.middleware.js";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/;
-const NAME_PATTERN = /^[a-zA-Z][a-zA-Z '-]{1,49}$/;
+// const NAME_PATTERN = /^[a-zA-Z][a-zA-Z '-]{1,49}$/;
 
 const clean = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -63,26 +63,25 @@ export const register = async (req, res, next) => {
             emailOtpExpires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
         });
 
-        // The account stays available for a resend, but never claim that a code
-        // was sent when the provider rejected it.
+        logVerificationOtp(email, otp, "registration");
+
+        let emailDeliveryFailed = false;
         try {
             await sendVerificationOtpEmail(email, otp);
         } catch (mailError) {
-            console.error(`Failed to send verification email to ${email}: ${mailError.message}`);
-            return res.status(503).json({
-                success: false,
-                code: "EMAIL_DELIVERY_FAILED",
-                message: "Your account was created, but we could not send the verification code. Please try again shortly.",
-                requiresEmailVerification: true,
-            });
+            emailDeliveryFailed = true;
+            console.error(`Failed to send verification email to ${email}: ${mailError.message} | SMTP code: ${mailError.code || "<unknown>"} | SMTP response: ${mailError.response || "<none>"} | public IP: ${mailError.publicIp || "<unknown>"}`);
         }
 
         res.status(201).json({
             success: true,
-            message: "Account created. Check your email for a verification code to activate your account.",
+            message: emailDeliveryFailed
+                ? "Account created, but the verification email could not be sent. Use resend verification after fixing email delivery."
+                : "Account created. Check your email for a verification code to activate your account.",
             token: signToken(user._id),
             user: user.toPublicJSON(),
             requiresEmailVerification: true,
+            emailDeliveryFailed,
         });
     } catch (error) {
         if (error?.code === 11000) return res.status(409).json({ success: false, message: "An account with this email already exists." });
@@ -162,7 +161,7 @@ export const forgotPassword = async (req, res, next) => {
         } catch (mailError) {
             // Don't leak whether the address exists, and don't leave a usable token behind
             // if the email never went out. Clear it and log for the operator.
-            console.error(`Failed to send password reset email to ${email}: ${mailError.message}`);
+            console.error(`Failed to send password reset email to ${email}: ${mailError.message} | public IP: ${mailError.publicIp || "<unknown>"}`);
             user.passwordResetToken = undefined;
             user.passwordResetExpires = undefined;
             await user.save({ validateBeforeSave: false });
@@ -261,16 +260,15 @@ export const resendVerificationOtp = async (req, res, next) => {
         user.emailOtpExpires = new Date(Date.now() + 15 * 60 * 1000);
         await user.save();
 
-        // Do not report success when the provider rejected the resend.
+        logVerificationOtp(user.email, otp, "resend");
+
         try {
             await sendVerificationOtpEmail(user.email, otp);
         } catch (mailError) {
-            console.error(`Failed to resend verification email to ${user.email}: ${mailError.message}`);
+            console.error(`Failed to resend verification email to ${user.email}: ${mailError.message} | SMTP code: ${mailError.code || "<unknown>"} | SMTP response: ${mailError.response || "<none>"} | public IP: ${mailError.publicIp || "<unknown>"}`);
             return res.status(503).json({
                 success: false,
-                code: "EMAIL_DELIVERY_FAILED",
-                message: "We could not send the verification code. Please try again shortly.",
-                requiresEmailVerification: true,
+                message: "Unable to send the verification email. Please try again after fixing email delivery.",
             });
         }
 

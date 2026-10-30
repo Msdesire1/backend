@@ -18,14 +18,10 @@ Password reset emails already existed and still work the same way.
 ### POST `/api/auth/verify-email`
 Verify the OTP code sent during registration.
 
-**Headers:**
-```
-Authorization: Bearer <token-from-register-response>
-```
-
 **Body:**
 ```json
 {
+  "email": "ada@example.com",
   "otp": "123456"
 }
 ```
@@ -49,12 +45,12 @@ Authorization: Bearer <token-from-register-response>
 ### POST `/api/auth/resend-verification-otp`
 Request a new OTP if the first one expired or was lost.
 
-**Headers:**
+**Body:**
+```json
+{
+  "email": "ada@example.com"
+}
 ```
-Authorization: Bearer <token-from-register-response>
-```
-
-**Body:** (empty)
 
 **Success Response (200):**
 ```json
@@ -120,6 +116,8 @@ EMAIL_FROM="Word of Faith Bible Institute <verified@yourdomain.com>"
 
 The sender address must be verified in Brevo. Do **not** set `SMTP_PORT=443`: port 443 is used automatically by the HTTPS API, not by SMTP.
 
+The application automatically uses the Brevo API whenever `BREVO_API_KEY` is set, even if older `SMTP_*` variables are still present.
+
 ### SMTP setup (local development or paid Render instances)
 
 ### Step 1: Get Brevo SMTP Credentials
@@ -163,7 +161,8 @@ Now emails will actually send instead of printing to the console.
 
 If SMTP isn't configured, the app stays in **dev mode**:
 - It prints the email content to the terminal instead of sending
-- The OTP code appears in the console — you can copy it from there
+- If SMTP is configured but rejected, the OTP is also printed in non-production
+  mode so the account can still be tested locally
 - Everything else works normally
 
 This is intentional so you can develop locally without email credentials.
@@ -193,12 +192,17 @@ db.users.updateMany({}, { $set: { emailVerified: true } })
 
 1. **After registration**, check `response.requiresEmailVerification`
    - If `true`, show a "Verify your email" screen with a 6-digit input
+<<<<<<< HEAD
+   
+2. **On that screen**, call `POST /api/auth/verify-email` with the user's email and OTP
+=======
 
 2. **On that screen**, call `POST /api/auth/verify-email` with the user's token and their OTP
+>>>>>>> 7e53228efe71c50c11375ed3b88dbc06ec66029d
 
 3. **If login returns 403** with `requiresEmailVerification: true`:
    - Redirect to the verify screen
-   - Offer a "Resend code" button that calls `POST /api/auth/resend-verification-otp`
+  - Offer a "Resend code" button that calls `POST /api/auth/resend-verification-otp` with the user's email
 
 4. **After successful verification**, redirect to login (user must log in again)
 
