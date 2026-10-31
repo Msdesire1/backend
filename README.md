@@ -106,6 +106,12 @@ The authenticated admin endpoints `GET /api/admin/church-members` and
 `GET /api/admin/church-members/export` provide a searchable, paginated roster and
 a matching CSV download. Both routes require an admin token.
 
+The Join Us profile also stores optional ordination, occupation/workplace,
+commission and church joining dates/locations, new-birth date, and WOFBI
+programme/date attended. The date of birth remains a separate required field.
+WSF suggestions are matched against the member's address using the home-cell
+directory, and the selected cell and address are stored together.
+
 Registration is three steps: `register` creates the account and emails a six-digit
 code, `verify-email` activates it, `complete-registration` fills in the profile.
 Logging in before verifying returns 403 with `code: "EMAIL_NOT_VERIFIED"`.

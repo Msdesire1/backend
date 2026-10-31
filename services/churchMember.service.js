@@ -28,6 +28,17 @@ export const validateChurchMember = (body = {}) => {
   const phone = normalizePhone(body.phone);
   const email = clean(body.email).toLowerCase();
   const dateOfBirth = parseDate(body.dateOfBirth);
+  const dateOrdained = body.dateOrdained ? parseDate(body.dateOrdained) : null;
+  const occupation = clean(body.occupation);
+  const workingPlace = clean(body.workingPlace);
+  const dateJoinedCommission = body.dateJoinedCommission ? parseDate(body.dateJoinedCommission) : null;
+  const commissionLocation = clean(body.commissionLocation);
+  const newBirthDate = body.newBirthDate ? parseDate(body.newBirthDate) : null;
+  const dateJoinedLfcNewJerusalem = body.dateJoinedLfcNewJerusalem
+    ? parseDate(body.dateJoinedLfcNewJerusalem)
+    : null;
+  const wofbiProgramme = clean(body.wofbiProgramme);
+  const wofbiDateAttended = body.wofbiDateAttended ? parseDate(body.wofbiDateAttended) : null;
   const gender = clean(body.gender);
   const maritalStatus = clean(body.maritalStatus);
   const weddingAnniversary =
@@ -48,6 +59,21 @@ export const validateChurchMember = (body = {}) => {
   if (!PHONE_PATTERN.test(phone)) errors.phone = "Enter a valid phone number, such as 08012345678.";
   if (!EMAIL_PATTERN.test(email) || email.length > 254) errors.email = "Enter a valid email address.";
   if (!dateOfBirth || dateOfBirth >= new Date()) errors.dateOfBirth = "Enter a valid date of birth.";
+  for (const [field, value, label] of [
+    ["dateOrdained", dateOrdained, "ordination date"],
+    ["dateJoinedCommission", dateJoinedCommission, "commission joining date"],
+    ["newBirthDate", newBirthDate, "new birth date"],
+    ["dateJoinedLfcNewJerusalem", dateJoinedLfcNewJerusalem, "church joining date"],
+    ["wofbiDateAttended", wofbiDateAttended, "WOFBI attendance date"],
+  ]) {
+    if (body[field] && (!value || value >= new Date())) {
+      errors[field] = `Enter a valid ${label}.`;
+    }
+  }
+  if (occupation.length > 120) errors.occupation = "Use 120 characters or fewer.";
+  if (workingPlace.length > 160) errors.workingPlace = "Use 160 characters or fewer.";
+  if (commissionLocation.length > 160) errors.commissionLocation = "Use 160 characters or fewer.";
+  if (wofbiProgramme.length > 120) errors.wofbiProgramme = "Use 120 characters or fewer.";
   if (!["Male", "Female"].includes(gender)) errors.gender = "Choose a gender.";
   if (!MARITAL_STATUSES.includes(maritalStatus)) errors.maritalStatus = "Choose a marital status.";
   if (maritalStatus === "Married" && !weddingAnniversary) {
@@ -63,7 +89,7 @@ export const validateChurchMember = (body = {}) => {
   if (Number.isNaN(numberOfChildren) || (numberOfChildren !== null && (!Number.isInteger(numberOfChildren) || numberOfChildren < 0 || numberOfChildren > 100))) {
     errors.numberOfChildren = "Enter a whole number between 0 and 100.";
   }
-  if (wsfLocation.length > 120) errors.wsfLocation = "Use 120 characters or fewer.";
+  if (wsfLocation.length > 240) errors.wsfLocation = "Use 240 characters or fewer.";
   if (serviceUnit.length > 80) errors.serviceUnit = "Use 80 characters or fewer.";
   if (!body.consent) errors.consent = "Confirm that the information is correct.";
 
@@ -75,6 +101,15 @@ export const validateChurchMember = (body = {}) => {
       phone,
       email,
       dateOfBirth,
+      dateOrdained,
+      occupation,
+      workingPlace,
+      dateJoinedCommission,
+      commissionLocation,
+      newBirthDate,
+      dateJoinedLfcNewJerusalem,
+      wofbiProgramme,
+      wofbiDateAttended,
       gender,
       maritalStatus,
       weddingAnniversary,
@@ -106,6 +141,11 @@ export const editTokenMatches = (token, storedHash) => {
 export const memberFormJSON = (member) => ({
   ...member.toPublicJSON(),
   dateOfBirth: member.dateOfBirth.toISOString().slice(0, 10),
+  dateOrdained: member.dateOrdained?.toISOString().slice(0, 10) || "",
+  dateJoinedCommission: member.dateJoinedCommission?.toISOString().slice(0, 10) || "",
+  newBirthDate: member.newBirthDate?.toISOString().slice(0, 10) || "",
+  dateJoinedLfcNewJerusalem: member.dateJoinedLfcNewJerusalem?.toISOString().slice(0, 10) || "",
+  wofbiDateAttended: member.wofbiDateAttended?.toISOString().slice(0, 10) || "",
   weddingAnniversary: member.weddingAnniversary?.toISOString().slice(0, 10) || "",
 });
 
